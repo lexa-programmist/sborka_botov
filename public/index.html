@@ -4,31 +4,80 @@
   <meta charset="UTF-8" />
   <title>5SIM Локальная панель управления</title>
   <style>
+    /* Основные стили */
     html, body {
-      margin: 0; padding: 0; height: 100%;
+      margin: 0; 
+      padding: 0; 
+      height: 100%;
       background: #000;
       font-family: 'Courier New', monospace;
       color: #00e0c6;
-      overflow: auto;
-      scroll-behavior: smooth;
+      overflow: hidden;
     }
+
+    /* Стили для кастомного скроллбара */
+    ::-webkit-scrollbar {
+      width: 10px;
+      height: 10px;
+    }
+
+    ::-webkit-scrollbar-track {
+      background: rgba(10, 10, 10, 0.5);
+      border-radius: 5px;
+    }
+
+    ::-webkit-scrollbar-thumb {
+      background: #00e0c6;
+      border-radius: 5px;
+      border: 2px solid rgba(0, 0, 0, 0.2);
+    }
+
+    ::-webkit-scrollbar-thumb:hover {
+      background: #00ffc8;
+      box-shadow: 0 0 5px rgba(0, 255, 204, 0.5);
+    }
+
+    /* Для Firefox */
+    * {
+      scrollbar-width: thin;
+      scrollbar-color: #00e0c6 rgba(10, 10, 10, 0.5);
+    }
+
+    canvas {
+      position: fixed;
+      top: 0;
+      left: 0;
+      z-index: 0;
+      filter: blur(3px) brightness(0.4);
+    }
+
     .log {
       scrollbar-color: #00e0c6 #111;
       scrollbar-width: thin;
     }
+
     .content {
       position: relative;
       z-index: 1;
       padding: 30px;
       max-width: 600px;
       margin: 0 auto;
+      height: 100vh;
+      overflow-y: auto;
+      scrollbar-width: none; /* Для Firefox */
     }
+
+    .content::-webkit-scrollbar {
+      display: none; /* Скрыть стандартный скроллбар */
+    }
+
     .title {
       text-align: center;
       font-size: 20px;
       margin-bottom: 30px;
       text-shadow: 0 0 5px #00e0c6;
     }
+
     .panel {
       background-color: rgba(20, 20, 20, 0.85);
       border: 1px solid #3a3a3a;
@@ -37,21 +86,25 @@
       margin-bottom: 20px;
       box-shadow: 0 0 20px rgba(0, 255, 204, 0.1);
     }
+
     .panel h3 {
       color: #00ffc8;
       margin-top: 0;
       border-bottom: 1px solid #3a3a3a;
       padding-bottom: 10px;
     }
+
     .input-group {
       margin-bottom: 15px;
     }
+
     label {
       display: block;
       margin-bottom: 5px;
       font-size: 14px;
       color: #00e0c6;
     }
+
     input, select {
       width: 100%;
       padding: 8px;
@@ -61,6 +114,7 @@
       border-radius: 6px;
       font-family: 'Courier New', monospace;
     }
+
     button {
       background: #00e0c6;
       color: #000;
@@ -75,16 +129,19 @@
       margin-top: 10px;
       font-family: 'Courier New', monospace;
     }
+
     button:hover {
       background: #00ffc8;
       box-shadow: 0 0 10px rgba(0, 255, 204, 0.5);
     }
+
     button:disabled {
       background: #555;
       color: #999;
       cursor: not-allowed;
       box-shadow: none;
     }
+
     .result {
       margin-top: 20px;
       font-size: 14px;
@@ -95,6 +152,7 @@
       border-radius: 8px;
       border-left: 3px solid #00e0c6;
     }
+
     .status {
       margin-top: 15px;
       padding: 10px;
@@ -103,6 +161,7 @@
       border-left: 3px solid #00e0c6;
       font-size: 13px;
     }
+
     .api-key-form {
       margin-bottom: 25px;
       padding: 20px;
@@ -110,9 +169,11 @@
       border-radius: 10px;
       border: 1px solid #3a3a3a;
     }
+
     .hidden {
       display: none !important;
     }
+
     .user-info {
       margin-bottom: 15px;
       padding: 10px;
@@ -120,6 +181,7 @@
       border-radius: 8px;
       font-size: 14px;
     }
+
     .log {
       max-height: 200px;
       overflow-y: auto;
@@ -130,20 +192,22 @@
       font-size: 12px;
       color: #7afde0;
     }
+
     .log-entry {
       margin-bottom: 5px;
       padding-bottom: 5px;
       border-bottom: 1px dashed #1a3a35;
     }
+
     .log-time {
       color: #5ac5b2;
       margin-right: 10px;
     }
 
-    /* Модалка API ключа */
     #apiKeyModal {
       position: fixed;
-      top: 50%; left: 50%;
+      top: 50%; 
+      left: 50%;
       transform: translate(-50%, -50%);
       background: rgba(10,10,10,0.95);
       padding: 20px;
@@ -155,70 +219,113 @@
   </style>
 </head>
 <body>
-  <div class="content">
-    <div class="title">
-      ЛОКАЛЬНАЯ ПАНЕЛЬ УПРАВЛЕНИЯ 5SIM
-    </div>
 
-    <div class="user-info" id="userInfo">
-      👤 Гость (локальный режим)
-    </div>
+<canvas id="matrixCanvas"></canvas>
 
-    <div class="api-key-form" id="apiKeyForm">
-      <h3>🔑 Настройки API</h3>
-      <div class="input-group">
-        <label>Ваш API ключ от 5sim.net:</label>
-        <input type="password" id="apiKeyInput" placeholder="Введите ваш API ключ" autocomplete="off" />
-      </div>
-      <button id="saveKeyBtn">💾 Сохранить ключ</button>
-      <div class="log" id="initLog"></div>
-    </div>
-
-    <div class="panel hidden" id="mainPanel">
-      <h3>⚙️ Настройки заказа</h3>
-      <div class="input-group">
-        <label>🌍 Страна:</label>
-        <select id="country"></select>
-      </div>
-      <div class="input-group">
-        <label>🛠️ Сервис:</label>
-        <select id="service">
-          <option value="telegram">Telegram</option>
-          <option value="whatsapp">WhatsApp</option>
-          <option value="avito">Avito</option>
-          <option value="google">Google</option>
-          <option value="facebook">Facebook</option>
-          <option value="twitter">Twitter</option>
-          <option value="instagram">Instagram</option>
-          <option value="tiktok">TikTok</option>
-        </select>
-      </div>
-      <div class="input-group">
-        <label>Количество номеров:</label>
-        <input type="number" id="quantity" min="1" value="1" />
-      </div>
-      <button id="buyBtn">📲 Купить номер</button>
-      <button id="codeBtn" disabled>🔐 Получить код</button>
-      <button id="cancelBtn" disabled>❌ Отменить заказ</button>
-      <button id="balanceBtn">💰 Проверить баланс</button>
-      <button id="infoBtn" disabled>ℹ️ Информация о заказе</button>
-      <button id="apiKeyBtn">🔑 API ключ</button>
-      <div class="result" id="result"></div>
-      <div class="status" id="status">Введите API ключ для начала работы</div>
-      <div class="log" id="actionLog"></div>
-    </div>
+<div class="content">
+  <div class="title">
+    ╔════════════════════════════════╗<br>
+    ║Локальная панель управления 5sim║<br>
+    ╚════════════════════════════════╝
   </div>
 
-  <!-- Модальное окно для замены API ключа -->
-  <div id="apiKeyModal" class="hidden">
-    <h3>Текущий API ключ</h3>
-    <input type="text" id="currentApiKey" readonly style="width: 100%; margin-bottom: 10px; background: #111; color: #0ff; border: 1px solid #00e0c6; padding: 8px; border-radius: 6px; font-family: monospace;" />
-    <h3>Новый API ключ</h3>
-    <input type="password" id="newApiKeyInput" placeholder="Введите новый ключ" style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid #444; background: #111; color: #0ff; font-family: monospace;" />
-    <button id="updateApiKeyBtn" style="margin-top: 10px;">💾 Обновить ключ</button>
-    <button id="closeApiKeyModalBtn" style="margin-top: 10px; background: #333; color: #0ff;">Закрыть</button>
+  <div class="user-info" id="userInfo">
+    👤 Гость (локальный режим)
   </div>
 
-  <script src="script.js"></script>
+  <div class="api-key-form" id="apiKeyForm">
+    <h3>🔑 Настройки API</h3>
+    <div class="input-group">
+      <label>Ваш API ключ от 5sim.net:</label>
+      <input type="password" id="apiKeyInput" placeholder="Введите ваш API ключ" autocomplete="off" />
+    </div>
+    <button id="saveKeyBtn">💾 Сохранить ключ</button>
+    <div class="log" id="initLog"></div>
+  </div>
+
+  <div class="panel hidden" id="mainPanel">
+    <h3>⚙️ Настройки заказа</h3>
+    <div class="input-group">
+      <label>🌍 Страна:</label>
+      <select id="country"></select>
+    </div>
+    <div class="input-group">
+      <label>🛠️ Сервис:</label>
+      <select id="service">
+        <option value="telegram">Telegram</option>
+        <option value="whatsapp">WhatsApp</option>
+        <option value="avito">Avito</option>
+        <option value="google">Google</option>
+        <option value="facebook">Facebook</option>
+        <option value="twitter">Twitter</option>
+        <option value="instagram">Instagram</option>
+        <option value="tiktok">TikTok</option>
+      </select>
+    </div>
+    <div class="input-group">
+      <label>Количество номеров:</label>
+      <input type="number" id="quantity" min="1" value="1" />
+    </div>
+    <button id="buyBtn">📲 Купить номер</button>
+    <button id="codeBtn" disabled>🔐 Получить код</button>
+    <button id="cancelBtn" disabled>❌ Отменить заказ</button>
+    <button id="balanceBtn">💰 Проверить баланс</button>
+    <button id="infoBtn" disabled>ℹ️ Информация о заказе</button>
+    <button id="apiKeyBtn">🔑 API ключ</button>
+    <div class="result" id="result"></div>
+    <div class="status" id="status">Введите API ключ для начала работы</div>
+    <div class="log" id="actionLog"></div>
+  </div>
+</div>
+
+<div id="apiKeyModal" class="hidden">
+  <h3>Текущий API ключ</h3>
+  <input type="text" id="currentApiKey" readonly style="width: 100%; margin-bottom: 10px; background: #111; color: #0ff; border: 1px solid #00e0c6; padding: 8px; border-radius: 6px; font-family: monospace;" />
+  <h3>Новый API ключ</h3>
+  <input type="password" id="newApiKeyInput" placeholder="Введите новый ключ" style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid #444; background: #111; color: #0ff; font-family: monospace;" />
+  <button id="updateApiKeyBtn" style="margin-top: 10px;">💾 Обновить ключ</button>
+  <button id="closeApiKeyModalBtn" style="margin-top: 10px; background: #333; color: #0ff;">Закрыть</button>
+</div>
+
+<script>
+  const canvas = document.getElementById("matrixCanvas");
+  const ctx = canvas.getContext("2d");
+
+  canvas.height = window.innerHeight;
+  canvas.width = window.innerWidth;
+
+  const letters = "アイウエオカキクケコサシスセソナニヌネノ0123456789";
+  const fontSize = 16;
+  const columns = canvas.width / fontSize;
+  const drops = Array(Math.floor(columns)).fill(1);
+
+  function draw() {
+    ctx.fillStyle = "rgba(0, 0, 0, 0.07)";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    ctx.fillStyle = "#66ffe6";
+    ctx.font = fontSize + "px monospace";
+
+    for (let i = 0; i < drops.length; i++) {
+      const text = letters.charAt(Math.floor(Math.random() * letters.length));
+      ctx.fillText(text, i * fontSize, drops[i] * fontSize);
+
+      if (drops[i] * fontSize > canvas.height && Math.random() > 0.985) {
+        drops[i] = 0;
+      }
+
+      drops[i] += 0.4;
+    }
+  }
+
+  setInterval(draw, 50);
+
+  window.addEventListener("resize", () => {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+  });
+</script>
+
+<script src="script.js"></script>
 </body>
 </html>
