@@ -173,6 +173,7 @@ async function buyNumber() {
   const service = el.service.value;
   const quantity = parseInt(el.quantity.value, 10);
 
+  // Валидация ввода
   if (!country) {
     showResult('❌ Выберите страну', true);
     return;
@@ -186,48 +187,120 @@ async function buyNumber() {
     return;
   }
 
+  // Блокируем кнопку на время выполнения
   el.buyBtn.disabled = true;
-  showResult(`⌛ Покупка ${quantity} номера(ов)...`);
-  updateStatus('Обработка запроса...');
+  const originalBtnText = el.buyBtn.textContent;
+  el.buyBtn.textContent = 'Покупка...';
+  
+  showResult(`⌛ Пытаюсь купить ${quantity} номер(ов)...`);
+  updateStatus('Отправка запроса...');
 
   try {
     const orders = [];
+    let successCount = 0;
+    let lastError = null;
+
     for (let i = 0; i < quantity; i++) {
-      const res = await fetch(`${API_BASE}/buy`, {
-        method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${state.apiKey}`
-        },
-        body: JSON.stringify({ country, service, user_id: userId }),
-      });
+      try {
+        updateStatus(`Покупка ${i+1}/${quantity}...`);
+        
+        // 1. Отправляем запрос
+        const response = await fetch(`${API_BASE}/buy`, {
+          method: 'POST',
+          headers: { 
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${state.apiKey}`
+          },
+          body: JSON.stringify({ 
+            country, 
+            service, 
+            user_id: userId 
+          }),
+        });
 
-      // Добавлена проверка на тип ответа
-      const contentType = res.headers.get('content-type') || '';
-      if (!contentType.includes('application/json')) {
-        const text = await res.text();
-        throw new Error(text.includes('<!DOCTYPE html>') ? 'Сервер вернул HTML-ошибку' : text);
+        // 2. Получаем сырой текст ответа
+        const responseText = await response.text();
+        
+        // 3. Пытаемся распарсить JSON
+        let result;
+        try {
+          result = JSON.parse(responseText);
+        } catch (e) {
+          // Анализируем текст ошибки
+          if (responseText.includes('502 Bad Gateway')) {
+            throw new Error('Сервер 5sim перегружен (502)');
+          } else if (responseText.includes('<!DOCTYPE html>')) {
+            throw new Error('Сервер вернул HTML-страницу');
+          } else if (responseText.includes('insufficient funds')) {
+            throw new Error('Недостаточно средств на балансе');
+          } else {
+            console.error('Raw error response:', responseText);
+            throw new Error('Неизвестный формат ответа');
+          }
+        }
+
+        // 4. Проверяем структуру ответа
+        if (!result || typeof result !== 'object') {
+          throw new Error('Некорректный формат данных');
+        }
+
+        if (!result.success) {
+          throw new Error(result.error || 'Ошибка без деталей');
+        }
+
+        if (!result.data || !result.data.id || !result.data.phone) {
+          throw new Error('Неполные данные в ответе');
+        }
+
+        // 5. Успешный случай
+        const order = result.data;
+        orders.push(order);
+        successCount++;
+        addLog(`✅ Успешно: ${order.phone} (${order.price} руб.)`);
+        
+        // Небольшая задержка между запросами
+        if (i < quantity - 1) {
+          await new Promise(r => setTimeout(r, 800));
+        }
+
+      } catch (error) {
+        lastError = error.message;
+        addLog(`⚠️ Попытка ${i+1}: ${error.message}`);
+        
+        // Если это последняя попытка - выбросим ошибку
+        if (i === quantity - 1 && successCount === 0) {
+          throw error;
+        }
+        
+        // Задержка перед следующей попыткой
+        await new Promise(r => setTimeout(r, 1500));
       }
-
-      const result = await res.json();
-      
-      // Проверяем флаг success
-      if (!result.success) {
-        throw new Error(result.error || 'Ошибка покупки');
-      }
-
-      addLog(`✅ Номер куплен: ${result.data.phone} | Стоимость: ${result.data.price} руб.`);
-      orders.push(result.data);
-      await new Promise(r => setTimeout(r, 500));
     }
+
+    // Обновляем состояние
     state.currentOrders = orders;
-    showResult(`✅ Успешно куплено ${orders.length} номер(ов)`);
-  } catch (e) {
-    showResult(`❌ Ошибка покупки: ${e.message}`, true);
-    updateStatus('Ошибка при покупке');
+    
+    if (successCount === quantity) {
+      showResult(`✅ Все ${quantity} номеров куплены!`);
+    } else {
+      showResult(`⚠️ Куплено ${successCount}/${quantity}. Последняя ошибка: ${lastError}`);
+    }
+
+  } catch (error) {
+    console.error('Critical error:', error);
+    showResult(`❌ Фатальная ошибка: ${error.message}`, true);
+    updateStatus('Покупка прервана');
+    
   } finally {
+    // Восстанавливаем UI
     el.buyBtn.disabled = false;
+    el.buyBtn.textContent = originalBtnText;
     updateUI();
+    
+    // Обновляем баланс после операций
+    if (state.currentOrders.length > 0) {
+      await getBalance();
+    }
   }
 }
 
