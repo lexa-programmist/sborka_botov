@@ -135,12 +135,16 @@ function saveOrdersToStorage() {
 function loadOrdersFromStorage() {
   const saved = localStorage.getItem('5sim_active_orders');
   if (saved) {
-    const { currentOrderId, orders } = JSON.parse(saved);
-    state.currentOrderId = currentOrderId;
-    state.currentOrders = orders || [];
-    
-    if (currentOrderId || orders?.length) {
-      addLog('Загружены неотмененные заказы', 'init');
+    try {
+      const { currentOrderId, orders, lastUpdated } = JSON.parse(saved);
+      state.currentOrderId = currentOrderId;
+      state.currentOrders = orders || [];
+      
+      if (currentOrderId || orders?.length) {
+        addLog(`Загружено ${orders?.length || 1} активных заказов`, 'init');
+      }
+    } catch (e) {
+      console.error('Ошибка загрузки заказов:', e);
     }
   }
 }
@@ -272,6 +276,7 @@ async function buyNumber() {
     }
     state.currentOrders = orders;
     saveOrdersToStorage();
+    await getOrderInfo();
     showResult(`✅ Успешно куплено ${orders.length} номер(ов)`);
     updateButtonStates(); // Убрано ошибочное currentOrderId = data.id
   } catch (e) {
@@ -369,86 +374,55 @@ async function getBalance() {
 
 // Получение информации о заказе
 async function getOrderInfo() {
-  // Проверяем наличие активных заказов
-  if ((!state.currentOrders || state.currentOrders.length === 0) && !state.currentOrderId) {
+  // Проверяем наличие заказов в состоянии
+  const activeOrders = [...state.currentOrders];
+  if (state.currentOrderId && !activeOrders.some(o => o.id === state.currentOrderId)) {
+    activeOrders.push({ id: state.currentOrderId });
+  }
+
+  if (activeOrders.length === 0) {
     showResult('ℹ️ Нет активных заказов');
     return;
   }
 
   try {
-    showResult('⌛ Получение информации о заказах...');
-    updateStatus('Запрос информации...');
+    showResult('⌛ Загружаем информацию...');
+    updateStatus('Получение данных...');
+
+    let infoText = `ℹ️ Активных заказов: ${activeOrders.length}\n\n`;
     
-    // Собираем все ID заказов
-    const orderIds = [];
-    if (state.currentOrderId) orderIds.push(state.currentOrderId);
-    if (state.currentOrders && state.currentOrders.length > 0) {
-      state.currentOrders.forEach(order => {
-        if (order && order.id) orderIds.push(order.id);
-      });
-    }
-
-    if (orderIds.length === 0) {
-      showResult('ℹ️ Нет действительных ID заказов');
-      return;
-    }
-
-    let infoText = `ℹ️ Найдено заказов: ${orderIds.length}\n\n`;
-    let hasValidOrders = false;
-
-    // Получаем информацию по каждому заказу
-    for (const orderId of orderIds) {
-      try {
-        const response = await apiPost('/order/info', { order_id: orderId });
-        
-        // Проверяем структуру ответа
-        if (!response || typeof response !== 'object') {
-          infoText += `Заказ #${orderId}: Неверный формат ответа\n----------------\n`;
-          continue;
-        }
-
-        hasValidOrders = true;
-        infoText += `Заказ #${response.id || orderId}\n`;
-        infoText += `Номер: ${response.phone || 'не указан'}\n`;
-        infoText += `Страна: ${response.country || 'не указана'}\n`;
-        infoText += `Сервис: ${response.service || 'не указан'}\n`;
-        infoText += `Статус: ${response.status || 'неизвестен'}\n`;
-        infoText += `Цена: ${response.price || '0'} руб.\n`;
-        
-        if (response.sms && response.sms.text) {
-          infoText += `SMS: ${response.sms.text}\n`;
-        } else if (response.sms_code) {
-          infoText += `Код: ${response.sms_code}\n`;
-        } else {
-          infoText += `SMS: еще не получено\n`;
-        }
-        
-        infoText += `----------------\n`;
-      } catch (e) {
-        console.error(`Ошибка при запросе заказа ${orderId}:`, e);
-        infoText += `Заказ #${orderId}: Ошибка запроса (${e.message || 'неизвестная ошибка'})\n----------------\n`;
+    // Используем данные, которые уже есть в состоянии
+    activeOrders.forEach(order => {
+      infoText += `Заказ #${order.id}\n`;
+      infoText += `Номер: ${order.phone || order.number || 'не указан'}\n`;
+      infoText += `Страна: ${order.country || 'не указана'}\n`;
+      infoText += `Сервис: ${order.service || 'не указан'}\n`;
+      infoText += `Статус: ${order.status || 'активен'}\n`;
+      infoText += `Цена: ${order.price || '0'} руб.\n`;
+      
+      if (order.sms) {
+        infoText += `SMS: ${order.sms.text || order.sms || 'еще не получено'}\n`;
+      } else if (order.code) {
+        infoText += `Код: ${order.code}\n`;
       }
+      
+      infoText += `----------------\n`;
+    });
+
+    // Добавляем время обновления
+    const savedData = localStorage.getItem('5sim_active_orders');
+    if (savedData) {
+      const { lastUpdated } = JSON.parse(savedData);
+      infoText += `\nПоследнее обновление: ${new Date(lastUpdated).toLocaleString()}`;
     }
 
-    if (!hasValidOrders) {
-      infoText = 'ℹ️ Нет действительной информации по заказам';
-    } else {
-      // Добавляем время последнего обновления
-      const savedOrders = localStorage.getItem('5sim_active_orders');
-      if (savedOrders) {
-        const { lastUpdated } = JSON.parse(savedOrders);
-        if (lastUpdated) {
-          infoText += `\nПоследнее обновление: ${new Date(lastUpdated).toLocaleString()}`;
-        }
-      }
-    }
-    
     showResult(infoText);
-    updateStatus('Информация получена');
+    updateStatus('Информация загружена');
+    
   } catch (e) {
-    console.error('Общая ошибка getOrderInfo:', e);
-    showResult(`❌ Ошибка получения информации: ${e.message || 'неизвестная ошибка сервера'}`, true);
-    updateStatus('Ошибка при запросе информации');
+    console.error('Ошибка:', e);
+    showResult('❌ Ошибка отображения информации', true);
+    updateStatus('Ошибка загрузки');
   }
 }
 
