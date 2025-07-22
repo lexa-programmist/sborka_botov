@@ -9,6 +9,17 @@ window.fetch = async function (...args) {
 
   const contentType = response.headers.get('content-type');
 
+document.addEventListener('DOMContentLoaded', () => {
+  if (window.ethereum) {
+    try {
+      delete window.ethereum;
+    } catch (e) {
+      console.warn('Не удалось очистить window.ethereum:', e);
+    }
+  }
+  el.refreshOrdersBtn.addEventListener('click', getOrderInfo);
+});
+
   // Проверка: если ответ не JSON, выбрасываем исключение с содержимым ответа
   if (contentType && !contentType.includes('application/json')) {
     const text = await response.text();
@@ -37,6 +48,7 @@ const el = {
   country: document.getElementById('country'),
   service: document.getElementById('service'),
   quantity: document.getElementById('quantity'),
+  refreshOrdersBtn: document.getElementById('refreshOrdersBtn'),
 
   // API Key modal
   apiKeyBtn: document.getElementById('apiKeyBtn'),
@@ -52,6 +64,7 @@ let state = {
   apiKey: '',
   currentOrders: [],
   balance: 0,
+  currentOrderId: null,
 };
 
 // Очистка API ключа от неподдерживаемых символов (оставляем только ASCII)
@@ -81,6 +94,13 @@ function updateStatus(text) {
   addLog(`STATUS: ${text}`);
 }
 
+function updateButtonStates() {
+  const hasOrder = !!state.currentOrderId || state.currentOrders.length > 0;
+  el.codeBtn.disabled = !hasOrder;
+  el.cancelBtn.disabled = !hasOrder;
+  el.infoBtn.disabled = !hasOrder;
+}
+
 // Показываем результат
 function showResult(text, isError = false) {
   el.result.textContent = text;
@@ -90,39 +110,69 @@ function showResult(text, isError = false) {
 
 // Обновление UI
 function updateUI() {
-  const hasOrders = state.currentOrders.length > 0;
+  const hasOrders = state.currentOrderId || state.currentOrders.length > 0;
   el.codeBtn.disabled = !hasOrders;
   el.cancelBtn.disabled = !hasOrders;
   el.infoBtn.disabled = !hasOrders;
 
   if (hasOrders) {
-    updateStatus(`Активных заказов: ${state.currentOrders.length}`);
+    updateStatus(`Активных заказов: ${state.currentOrders.length || 1}`);
   } else {
     updateStatus('Готов к работе');
   }
 }
 
+// Сохраняем текущие заказы
+function saveOrdersToStorage() {
+  localStorage.setItem('5sim_active_orders', JSON.stringify({
+    currentOrderId: state.currentOrderId,
+    orders: state.currentOrders,
+    lastUpdated: new Date().toISOString()
+  }));
+}
+
+// Загружаем заказы
+function loadOrdersFromStorage() {
+  const saved = localStorage.getItem('5sim_active_orders');
+  if (saved) {
+    const { currentOrderId, orders } = JSON.parse(saved);
+    state.currentOrderId = currentOrderId;
+    state.currentOrders = orders || [];
+    
+    if (currentOrderId || orders?.length) {
+      addLog('Загружены неотмененные заказы', 'init');
+    }
+  }
+}
+
 // Вспомогательные API вызовы
 async function apiPost(path, body) {
-  if (!state.apiKey) throw new Error('API ключ не установлен');
-  const cleanKey = sanitizeApiKey(state.apiKey);
-  const res = await fetch(`${API_BASE}${path}`, {
-    method: 'POST',
-    headers: { 
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${cleanKey}`
-    },
-    body: JSON.stringify(body)
-  });
-  if (!res.ok) {
-    let errText = 'Ошибка сервера';
+  try {
+    const res = await fetch(`${API_BASE}${path}`, {
+      method: 'POST',
+      headers: { 
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${state.apiKey}`
+      },
+      body: JSON.stringify(body)
+    });
+
+    const text = await res.text();
+    console.log('Raw response:', text); // Логируем сырой ответ
+    
+    if (!res.ok) {
+      throw new Error(`HTTP ${res.status}: ${text.slice(0, 100)}`);
+    }
+
     try {
-      const err = await res.json();
-      errText = err.error || errText;
-    } catch {}
-    throw new Error(errText);
+      return JSON.parse(text);
+    } catch {
+      throw new Error('Невалидный JSON: ' + text.slice(0, 100));
+    }
+  } catch (e) {
+    console.error('API Error:', { path, error: e.message });
+    throw new Error(e.message.includes('JSON') ? 'Ошибка сервера' : e.message);
   }
-  return res.json();
 }
 
 async function apiGet(path) {
@@ -202,7 +252,6 @@ async function buyNumber() {
         body: JSON.stringify({ country, service, user_id: userId }),
       });
 
-      // Добавлена проверка на тип ответа
       const contentType = res.headers.get('content-type') || '';
       if (!contentType.includes('application/json')) {
         const text = await res.text();
@@ -211,17 +260,20 @@ async function buyNumber() {
 
       const result = await res.json();
       
-      // Проверяем флаг success
-      if (!result.success) {
+      if (result.success) {
+        addLog(`✅ Номер куплен: ${result.data.phone} | Стоимость: ${result.data.price} руб.`);
+        orders.push(result.data);
+        state.currentOrderId = result.data.id; // Исправлено: используем result.data
+        updateButtonStates();
+        await new Promise(r => setTimeout(r, 500));
+      } else {
         throw new Error(result.error || 'Ошибка покупки');
       }
-
-      addLog(`✅ Номер куплен: ${result.data.phone} | Стоимость: ${result.data.price} руб.`);
-      orders.push(result.data);
-      await new Promise(r => setTimeout(r, 500));
     }
     state.currentOrders = orders;
+    saveOrdersToStorage();
     showResult(`✅ Успешно куплено ${orders.length} номер(ов)`);
+    updateButtonStates(); // Убрано ошибочное currentOrderId = data.id
   } catch (e) {
     showResult(`❌ Ошибка покупки: ${e.message}`, true);
     updateStatus('Ошибка при покупке');
@@ -255,19 +307,49 @@ async function getCode() {
 
 // Отмена заказа
 async function cancelOrder() {
-  if (state.currentOrders.length === 0) {
-    showResult('❌ Нет активных заказов', true);
+  // Собираем все ID заказов (текущий + из списка)
+  const orderIds = [];
+  if (state.currentOrderId) orderIds.push(state.currentOrderId);
+  state.currentOrders.forEach(order => orderIds.push(order.id));
+
+  if (orderIds.length === 0) {
+    showResult('❌ Нет активных заказов для отмены', true);
     return;
   }
+
   try {
-    showResult('⌛ Отмена заказов...');
-    updateStatus('Обработка отмены...');
-    const res = await apiPost('/cancel', { user_id: userId });
-    showResult(`🚫 Заказ(ы) отменен(ы)\nВозврат: ${res.refund} руб.`);
+    showResult(`⌛ Отмена ${orderIds.length} заказов...`);
+    updateStatus('Обработка...');
+
+    // ЗАМЕНЯЕМ ЭТОТ БЛОК:
+    const results = [];
+    for (const orderId of orderIds) {
+      const result = await apiPost('/cancel', {
+        order_id: orderId, 
+        user_id: userId
+      }).catch(e => ({ success: false, error: e.message }));
+      results.push(result);
+      await new Promise(resolve => setTimeout(resolve, 100)); // 100ms задержка
+    }
+
+    // Анализируем результаты
+    const successCount = results.filter(r => r?.success).length;
+    const errorCount = results.length - successCount;
+
+    if (errorCount > 0) {
+      showResult(`✅ Отменено ${successCount}/${orderIds.length} заказов (${errorCount} ошибок)`, false);
+    } else {
+      showResult(`✅ Все ${orderIds.length} заказов отменены`);
+    }
+
+    // Очищаем состояние
+    state.currentOrderId = null;
     state.currentOrders = [];
-    updateUI();
+    await getBalance();
   } catch (e) {
-    showResult(`❌ Ошибка отмены: ${e.message}`, true);
+    showResult(`❌ Общая ошибка: ${e.message}`, true);
+  } finally {
+    updateUI();
   }
 }
 
@@ -287,17 +369,86 @@ async function getBalance() {
 
 // Получение информации о заказе
 async function getOrderInfo() {
-  if (state.currentOrders.length === 0) {
+  // Проверяем наличие активных заказов
+  if ((!state.currentOrders || state.currentOrders.length === 0) && !state.currentOrderId) {
     showResult('ℹ️ Нет активных заказов');
     return;
   }
+
   try {
-    showResult('⌛ Получение информации...');
-    updateStatus('Запрос информации о заказе...');
-    const order = await apiGet('/order');
-    showResult(`ℹ️ Заказ #${order.id}\nНомер: ${order.phone}\nСтатус: ${order.status}\nСтоимость: ${order.price}`);
+    showResult('⌛ Получение информации о заказах...');
+    updateStatus('Запрос информации...');
+    
+    // Собираем все ID заказов
+    const orderIds = [];
+    if (state.currentOrderId) orderIds.push(state.currentOrderId);
+    if (state.currentOrders && state.currentOrders.length > 0) {
+      state.currentOrders.forEach(order => {
+        if (order && order.id) orderIds.push(order.id);
+      });
+    }
+
+    if (orderIds.length === 0) {
+      showResult('ℹ️ Нет действительных ID заказов');
+      return;
+    }
+
+    let infoText = `ℹ️ Найдено заказов: ${orderIds.length}\n\n`;
+    let hasValidOrders = false;
+
+    // Получаем информацию по каждому заказу
+    for (const orderId of orderIds) {
+      try {
+        const response = await apiPost('/order/info', { order_id: orderId });
+        
+        // Проверяем структуру ответа
+        if (!response || typeof response !== 'object') {
+          infoText += `Заказ #${orderId}: Неверный формат ответа\n----------------\n`;
+          continue;
+        }
+
+        hasValidOrders = true;
+        infoText += `Заказ #${response.id || orderId}\n`;
+        infoText += `Номер: ${response.phone || 'не указан'}\n`;
+        infoText += `Страна: ${response.country || 'не указана'}\n`;
+        infoText += `Сервис: ${response.service || 'не указан'}\n`;
+        infoText += `Статус: ${response.status || 'неизвестен'}\n`;
+        infoText += `Цена: ${response.price || '0'} руб.\n`;
+        
+        if (response.sms && response.sms.text) {
+          infoText += `SMS: ${response.sms.text}\n`;
+        } else if (response.sms_code) {
+          infoText += `Код: ${response.sms_code}\n`;
+        } else {
+          infoText += `SMS: еще не получено\n`;
+        }
+        
+        infoText += `----------------\n`;
+      } catch (e) {
+        console.error(`Ошибка при запросе заказа ${orderId}:`, e);
+        infoText += `Заказ #${orderId}: Ошибка запроса (${e.message || 'неизвестная ошибка'})\n----------------\n`;
+      }
+    }
+
+    if (!hasValidOrders) {
+      infoText = 'ℹ️ Нет действительной информации по заказам';
+    } else {
+      // Добавляем время последнего обновления
+      const savedOrders = localStorage.getItem('5sim_active_orders');
+      if (savedOrders) {
+        const { lastUpdated } = JSON.parse(savedOrders);
+        if (lastUpdated) {
+          infoText += `\nПоследнее обновление: ${new Date(lastUpdated).toLocaleString()}`;
+        }
+      }
+    }
+    
+    showResult(infoText);
+    updateStatus('Информация получена');
   } catch (e) {
-    showResult(`❌ Ошибка получения информации: ${e.message}`, true);
+    console.error('Общая ошибка getOrderInfo:', e);
+    showResult(`❌ Ошибка получения информации: ${e.message || 'неизвестная ошибка сервера'}`, true);
+    updateStatus('Ошибка при запросе информации');
   }
 }
 
@@ -356,19 +507,71 @@ el.updateApiKeyBtn.addEventListener('click', async () => {
   }
 });
 
+// ... (весь предыдущий код остается без изменений до функции verifyActiveOrders)
+
+async function verifyActiveOrders() {
+  if (!state.currentOrders.length && !state.currentOrderId) return;
+  
+  try {
+    const validOrders = [];
+    
+    // Проверяем каждый заказ через API
+    for (const order of state.currentOrders) {
+      const res = await apiPost('/order/status', { 
+        order_id: order.id 
+      });
+      if (res.status !== 'CANCELED') {
+        validOrders.push(order);
+      }
+    }
+    
+    state.currentOrders = validOrders;
+    if (validOrders.length === 0) {
+      state.currentOrderId = null;
+      localStorage.removeItem('5sim_active_orders');
+    } else {
+      saveOrdersToStorage();
+    }
+  } catch (e) {
+    console.error('Order verification failed:', e);
+  }
+}
+
 // Инициализация страницы и UI
 async function init() {
   const savedKey = localStorage.getItem('5sim_api_key');
   if (savedKey) {
-    state.apiKey = savedKey;
-    el.apiKeyInput.value = savedKey;
-    el.apiKeyForm.classList.add('hidden');
-    el.mainPanel.classList.remove('hidden');
-    addLog('API ключ загружен из localStorage', 'init');
-    await apiPost('/init', { user_id: userId, api_key: savedKey });
-    await loadCountries();
-    await getBalance();
-    updateUI();
+    try {
+      state.apiKey = savedKey;
+      el.apiKeyInput.value = savedKey;
+      addLog('API ключ загружен из localStorage', 'init');
+      
+      // Проверяем ключ через API
+      await apiPost('/init', { user_id: userId, api_key: savedKey });
+      
+      // Если проверка прошла успешно, показываем основную панель
+      el.apiKeyForm.classList.add('hidden');
+      el.mainPanel.classList.remove('hidden');
+      
+      loadOrdersFromStorage();
+      await verifyActiveOrders();
+      await loadCountries();
+      await getBalance();
+      updateUI();
+      if (state.currentOrders.length > 0 || state.currentOrderId) {
+        await getOrderInfo();
+      }
+
+    } catch (e) {
+      // Если ключ невалидный, показываем форму ввода
+      showResult(`❌ Ошибка проверки ключа: ${e.message}`, true);
+      el.apiKeyForm.classList.remove('hidden');
+      el.mainPanel.classList.add('hidden');
+      updateStatus('Введите API ключ для начала работы');
+      // Очищаем невалидный ключ
+      localStorage.removeItem('5sim_api_key');
+      state.apiKey = '';
+    }
   } else {
     el.apiKeyForm.classList.remove('hidden');
     el.mainPanel.classList.add('hidden');
@@ -376,15 +579,25 @@ async function init() {
   }
 }
 
-document.addEventListener('DOMContentLoaded', init);
+// Обработчики событий
+document.addEventListener('DOMContentLoaded', () => {
+  // Удаление ethereum (если нужно)
+  if (window.ethereum) {
+    try {
+      delete window.ethereum;
+    } catch (e) {
+      console.warn('Не удалось очистить window.ethereum:', e);
+    }
+  }
 
+  // Инициализация приложения
+  init();
 
-// Обработчики кнопок
-el.saveKeyBtn.addEventListener('click', saveApiKey);
-el.buyBtn.addEventListener('click', buyNumber);
-el.codeBtn.addEventListener('click', getCode);
-el.cancelBtn.addEventListener('click', cancelOrder);
-el.balanceBtn.addEventListener('click', getBalance);
-el.infoBtn.addEventListener('click', getOrderInfo);
-
-init();
+  // Обработчики кнопок
+  el.saveKeyBtn.addEventListener('click', saveApiKey);
+  el.buyBtn.addEventListener('click', buyNumber);
+  el.codeBtn.addEventListener('click', getCode);
+  el.cancelBtn.addEventListener('click', cancelOrder);
+  el.balanceBtn.addEventListener('click', getBalance);
+  el.infoBtn.addEventListener('click', getOrderInfo);
+});
