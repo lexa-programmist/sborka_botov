@@ -484,30 +484,41 @@ el.updateApiKeyBtn.addEventListener('click', async () => {
 // ... (весь предыдущий код остается без изменений до функции verifyActiveOrders)
 
 async function verifyActiveOrders() {
-  if (!state.currentOrders.length && !state.currentOrderId) return;
-  
+  if (!state.currentOrders?.length && !state.currentOrderId) return;
+
   try {
     const validOrders = [];
-    
-    // Проверяем каждый заказ через API
+    const checkOrder = async (orderId) => {
+      try {
+        const res = await apiPost('/order/status', { order_id: orderId });
+        return res.status !== 'CANCELED';
+      } catch {
+        return false;
+      }
+    };
+
+    // Проверяем текущий заказ
+    if (state.currentOrderId) {
+      const isValid = await checkOrder(state.currentOrderId);
+      if (!isValid) state.currentOrderId = null;
+    }
+
+    // Проверяем список заказов
     for (const order of state.currentOrders) {
-      const res = await apiPost('/order/status', { 
-        order_id: order.id 
-      });
-      if (res.status !== 'CANCELED') {
+      if (order?.id && await checkOrder(order.id)) {
         validOrders.push(order);
       }
     }
-    
+
     state.currentOrders = validOrders;
-    if (validOrders.length === 0) {
-      state.currentOrderId = null;
+    
+    if (validOrders.length === 0 && !state.currentOrderId) {
       localStorage.removeItem('5sim_active_orders');
     } else {
       saveOrdersToStorage();
     }
   } catch (e) {
-    console.error('Order verification failed:', e);
+    console.error('Ошибка проверки заказов:', e);
   }
 }
 
@@ -518,17 +529,19 @@ async function init() {
     try {
       state.apiKey = savedKey;
       el.apiKeyInput.value = savedKey;
-      addLog('API ключ загружен из localStorage', 'init');
       
-      // Проверяем ключ через API
       await apiPost('/init', { user_id: userId, api_key: savedKey });
       
-      // Если проверка прошла успешно, показываем основную панель
       el.apiKeyForm.classList.add('hidden');
       el.mainPanel.classList.remove('hidden');
       
       loadOrdersFromStorage();
-      await verifyActiveOrders();
+      await verifyActiveOrders(); // Проверяем актуальность заказов
+      
+      if (state.currentOrders.length > 0 || state.currentOrderId) {
+        await getOrderInfo();
+      }
+      
       await loadCountries();
       await getBalance();
       updateUI();

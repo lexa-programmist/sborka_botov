@@ -152,33 +152,30 @@ app.post('/cancel', async (req, res) => {
     const { order_id, user_id } = req.body;
     const apiKey = keys[user_id || 'local'];
     
-    if (!apiKey) {
-      return res.status(400).json({ error: 'API ключ не найден' });
-    }
+    if (!apiKey) throw new Error('API ключ не найден');
+    if (!order_id) throw new Error('order_id обязателен');
 
-    const response = await axios({
-      method: 'GET',
-      url: `https://5sim.net/v1/user/cancel/${order_id}`,
+    const response = await axios.get(`https://5sim.net/v1/user/cancel/${order_id}`, {
       headers: {
         'Authorization': `Bearer ${apiKey}`,
         'Accept': 'application/json',
-        'User-Agent': 'Mozilla/5.0'
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
       },
-      responseType: 'text' // Важно!
+      timeout: 10000,
+      responseType: 'text'
     });
 
-    // Вручную парсим JSON
     try {
       const data = JSON.parse(response.data);
-      return res.json(data);
-    } catch (e) {
-      console.error('Invalid JSON:', response.data);
-      return res.status(500).json({ error: 'Invalid response from 5sim' });
+      return res.json({ success: true, data });
+    } catch {
+      throw new Error(`Невалидный JSON: ${response.data.substring(0, 100)}`);
     }
   } catch (e) {
-    console.error('Cancel error:', e.message);
+    console.error('Cancel Error:', e.message);
     return res.status(500).json({ 
-      error: e.response?.data?.message || e.message 
+      success: false,
+      error: e.response?.data?.message || e.message
     });
   }
 });
