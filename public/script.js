@@ -168,36 +168,68 @@ async function saveApiKey() {
 }
 
 // Покупка номера с учётом количества
-async function buyNumber(country, operator, service) {
+async function buyNumber() {
+  const country = el.country.value;
+  const service = el.service.value;
+  const quantity = parseInt(el.quantity.value, 10);
+
+  if (!country) {
+    showResult('❌ Выберите страну', true);
+    return;
+  }
+  if (!service) {
+    showResult('❌ Выберите сервис', true);
+    return;
+  }
+  if (!quantity || quantity < 1) {
+    showResult('❌ Введите корректное количество (минимум 1)', true);
+    return;
+  }
+
+  el.buyBtn.disabled = true;
+  showResult(`⌛ Покупка ${quantity} номера(ов)...`);
+  updateStatus('Обработка запроса...');
+
   try {
-    updateStatus("Пытаюсь купить номер...");
+    const orders = [];
+    for (let i = 0; i < quantity; i++) {
+      const res = await fetch(`${API_BASE}/buy`, {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${state.apiKey}`
+        },
+        body: JSON.stringify({ country, service, user_id: userId }),
+      });
 
-    const response = await fetch('http://localhost:5000/buy-number', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ country, operator, service }),
-    });
+      // Добавлена проверка на тип ответа
+      const contentType = res.headers.get('content-type') || '';
+      if (!contentType.includes('application/json')) {
+        const text = await res.text();
+        throw new Error(text.includes('<!DOCTYPE html>') ? 'Сервер вернул HTML-ошибку' : text);
+      }
 
-    const result = await response.json();
+      const result = await res.json();
+      
+      // Проверяем флаг success
+      if (!result.success) {
+        throw new Error(result.error || 'Ошибка покупки');
+      }
 
-    if (!result.success) {
-      throw new Error(result.error || "Ошибка при покупке номера");
+      addLog(`✅ Номер куплен: ${result.data.phone} | Стоимость: ${result.data.price} руб.`);
+      orders.push(result.data);
+      await new Promise(r => setTimeout(r, 500));
     }
-
-    updateStatus(`Номер куплен! ID: ${result.data.id}`);
-    savePurchasedNumber(result.data);
-
-    return result.data;
-
-  } catch (error) {
-    updateStatus(`Ошибка: ${error.message}`, 'error');
-    console.error("Ошибка покупки:", error);
-    return null;
+    state.currentOrders = orders;
+    showResult(`✅ Успешно куплено ${orders.length} номер(ов)`);
+  } catch (e) {
+    showResult(`❌ Ошибка покупки: ${e.message}`, true);
+    updateStatus('Ошибка при покупке');
+  } finally {
+    el.buyBtn.disabled = false;
+    updateUI();
   }
 }
-
 
 
 // Получение SMS кода
