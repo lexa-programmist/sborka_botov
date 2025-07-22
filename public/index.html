@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <title>5SIM Локальная панель управления</title>
+  <style>
+    html, body {
+      margin: 0; padding: 0; height: 100%;
+      background: #000;
+      font-family: 'Courier New', monospace;
+      color: #00e0c6;
+      overflow: auto;
+      scroll-behavior: smooth;
+    }
+    .log {
+      scrollbar-color: #00e0c6 #111;
+      scrollbar-width: thin;
+    }
+    .content {
+      position: relative;
+      z-index: 1;
+      padding: 30px;
+      max-width: 600px;
+      margin: 0 auto;
+    }
+    .title {
+      text-align: center;
+      font-size: 20px;
+      margin-bottom: 30px;
+      text-shadow: 0 0 5px #00e0c6;
+    }
+    .panel {
+      background-color: rgba(20, 20, 20, 0.85);
+      border: 1px solid #3a3a3a;
+      border-radius: 12px;
+      padding: 20px;
+      margin-bottom: 20px;
+      box-shadow: 0 0 20px rgba(0, 255, 204, 0.1);
+    }
+    .panel h3 {
+      color: #00ffc8;
+      margin-top: 0;
+      border-bottom: 1px solid #3a3a3a;
+      padding-bottom: 10px;
+    }
+    .input-group {
+      margin-bottom: 15px;
+    }
+    label {
+      display: block;
+      margin-bottom: 5px;
+      font-size: 14px;
+      color: #00e0c6;
+    }
+    input, select {
+      width: 100%;
+      padding: 8px;
+      background: #111;
+      border: 1px solid #444;
+      color: #0ff;
+      border-radius: 6px;
+      font-family: 'Courier New', monospace;
+    }
+    button {
+      background: #00e0c6;
+      color: #000;
+      border: none;
+      padding: 10px 16px;
+      border-radius: 8px;
+      font-weight: bold;
+      font-size: 14px;
+      cursor: pointer;
+      transition: all 0.3s;
+      width: 100%;
+      margin-top: 10px;
+      font-family: 'Courier New', monospace;
+    }
+    button:hover {
+      background: #00ffc8;
+      box-shadow: 0 0 10px rgba(0, 255, 204, 0.5);
+    }
+    button:disabled {
+      background: #555;
+      color: #999;
+      cursor: not-allowed;
+      box-shadow: none;
+    }
+    .result {
+      margin-top: 20px;
+      font-size: 14px;
+      color: #b3fff0;
+      white-space: pre-wrap;
+      background: rgba(0, 20, 15, 0.7);
+      padding: 15px;
+      border-radius: 8px;
+      border-left: 3px solid #00e0c6;
+    }
+    .status {
+      margin-top: 15px;
+      padding: 10px;
+      border-radius: 8px;
+      background: rgba(0, 224, 198, 0.1);
+      border-left: 3px solid #00e0c6;
+      font-size: 13px;
+    }
+    .api-key-form {
+      margin-bottom: 25px;
+      padding: 20px;
+      background: rgba(10, 10, 10, 0.9);
+      border-radius: 10px;
+      border: 1px solid #3a3a3a;
+    }
+    .hidden {
+      display: none !important;
+    }
+    .user-info {
+      margin-bottom: 15px;
+      padding: 10px;
+      background: rgba(0, 30, 25, 0.7);
+      border-radius: 8px;
+      font-size: 14px;
+    }
+    .log {
+      max-height: 200px;
+      overflow-y: auto;
+      background: rgba(0, 10, 8, 0.8);
+      padding: 10px;
+      border-radius: 8px;
+      margin-top: 15px;
+      font-size: 12px;
+      color: #7afde0;
+    }
+    .log-entry {
+      margin-bottom: 5px;
+      padding-bottom: 5px;
+      border-bottom: 1px dashed #1a3a35;
+    }
+    .log-time {
+      color: #5ac5b2;
+      margin-right: 10px;
+    }
+
+    /* Модалка API ключа */
+    #apiKeyModal {
+      position: fixed;
+      top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      background: rgba(10,10,10,0.95);
+      padding: 20px;
+      border-radius: 12px;
+      width: 320px;
+      box-shadow: 0 0 20px #00e0c6;
+      z-index: 1000;
+    }
+  </style>
+</head>
+<body>
+  <div class="content">
+    <div class="title">
+      ЛОКАЛЬНАЯ ПАНЕЛЬ УПРАВЛЕНИЯ 5SIM
+    </div>
+
+    <div class="user-info" id="userInfo">
+      👤 Гость (локальный режим)
+    </div>
+
+    <div class="api-key-form" id="apiKeyForm">
+      <h3>🔑 Настройки API</h3>
+      <div class="input-group">
+        <label>Ваш API ключ от 5sim.net:</label>
+        <input type="password" id="apiKeyInput" placeholder="Введите ваш API ключ" autocomplete="off" />
+      </div>
+      <button id="saveKeyBtn">💾 Сохранить ключ</button>
+      <div class="log" id="initLog"></div>
+    </div>
+
+    <div class="panel hidden" id="mainPanel">
+      <h3>⚙️ Настройки заказа</h3>
+      <div class="input-group">
+        <label>🌍 Страна:</label>
+        <select id="country"></select>
+      </div>
+      <div class="input-group">
+        <label>🛠️ Сервис:</label>
+        <select id="service">
+          <option value="telegram">Telegram</option>
+          <option value="whatsapp">WhatsApp</option>
+          <option value="avito">Avito</option>
+          <option value="google">Google</option>
+          <option value="facebook">Facebook</option>
+          <option value="twitter">Twitter</option>
+          <option value="instagram">Instagram</option>
+          <option value="tiktok">TikTok</option>
+        </select>
+      </div>
+      <div class="input-group">
+        <label>Количество номеров:</label>
+        <input type="number" id="quantity" min="1" value="1" />
+      </div>
+      <button id="buyBtn">📲 Купить номер</button>
+      <button id="codeBtn" disabled>🔐 Получить код</button>
+      <button id="cancelBtn" disabled>❌ Отменить заказ</button>
+      <button id="balanceBtn">💰 Проверить баланс</button>
+      <button id="infoBtn" disabled>ℹ️ Информация о заказе</button>
+      <button id="apiKeyBtn">🔑 API ключ</button>
+      <div class="result" id="result"></div>
+      <div class="status" id="status">Введите API ключ для начала работы</div>
+      <div class="log" id="actionLog"></div>
+    </div>
+  </div>
+
+  <!-- Модальное окно для замены API ключа -->
+  <div id="apiKeyModal" class="hidden">
+    <h3>Текущий API ключ</h3>
+    <input type="text" id="currentApiKey" readonly style="width: 100%; margin-bottom: 10px; background: #111; color: #0ff; border: 1px solid #00e0c6; padding: 8px; border-radius: 6px; font-family: monospace;" />
+    <h3>Новый API ключ</h3>
+    <input type="password" id="newApiKeyInput" placeholder="Введите новый ключ" style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid #444; background: #111; color: #0ff; font-family: monospace;" />
+    <button id="updateApiKeyBtn" style="margin-top: 10px;">💾 Обновить ключ</button>
+    <button id="closeApiKeyModalBtn" style="margin-top: 10px; background: #333; color: #0ff;">Закрыть</button>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>

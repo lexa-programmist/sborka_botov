@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <title>Мои боты</title>
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+      background: #000;
+      color: #00e0c6;
+      font-family: 'Courier New', monospace;
+      overflow: hidden;
+    }
+
+    canvas {
+      position: fixed;
+      top: 0;
+      left: 0;
+      z-index: 0;
+      filter: blur(3px) brightness(0.4);
+    }
+
+    .content {
+      position: relative;
+      z-index: 1;
+      padding: 30px;
+    }
+
+    .ascii-box {
+      white-space: pre;
+      font-size: 18px;
+      text-align: center;
+      margin-bottom: 30px;
+      color: #00e0c6;
+    }
+
+    .bot-card {
+      background-color: rgba(20, 20, 20, 0.85);
+      border: 1px solid #3a3a3a;
+      border-radius: 12px;
+      padding: 15px 20px;
+      margin-bottom: 15px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.6);
+      transition: transform 0.2s, background-color 0.2s;
+      cursor: pointer;
+    }
+
+    .bot-card:hover {
+      transform: scale(1.02);
+      background-color: rgba(40, 40, 40, 0.9);
+    }
+
+    .bot-name {
+      font-weight: bold;
+      font-size: 16px;
+      color: #00e0c6;
+      margin-bottom: 5px;
+    }
+
+    .bot-description {
+      font-size: 14px;
+      color: #b3fff0;
+    }
+  </style>
+</head>
+<body>
+
+<canvas id="matrixCanvas"></canvas>
+
+<div class="content">
+  <div class="ascii-box">
+╔════════════════════════════╗<br>
+║         🔍 Боты            ║<br>
+╚════════════════════════════╝
+  </div>
+
+  <div class="bot-card">
+    <div class="bot-name">🤖 Bot #1</div>
+    <div class="bot-description">5sim autobuy</div>
+  </div>
+
+  <div class="bot-card">
+    <div class="bot-name">🤖 Bot #2</div>
+    <div class="bot-description">kufar parser</div>
+  </div>
+
+  <div class="bot-card">
+    <div class="bot-name">🤖 Bot #3</div>
+    <div class="bot-description">spammer</div>
+  </div>
+
+  <div class="bot-card">
+    <div class="bot-name">🤖 Bot #4</div>
+    <div class="bot-description">SMS distribution</div>
+  </div>
+</div>
+
+<script>
+  const canvas = document.getElementById("matrixCanvas");
+  const ctx = canvas.getContext("2d");
+
+  canvas.height = window.innerHeight;
+  canvas.width = window.innerWidth;
+
+  const letters = "アイウエオカキクケコサシスセソナニヌネノ0123456789";
+  const fontSize = 16;
+  const columns = canvas.width / fontSize;
+  const drops = Array(Math.floor(columns)).fill(1);
+
+  function draw() {
+    // тёмный полупрозрачный фон с лёгким затуханием
+    ctx.fillStyle = "rgba(0, 0, 0, 0.07)";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    ctx.fillStyle = "#66ffe6"; // мягкий неоновый мятный
+    ctx.font = fontSize + "px monospace";
+
+    for (let i = 0; i < drops.length; i++) {
+      const text = letters.charAt(Math.floor(Math.random() * letters.length));
+      ctx.fillText(text, i * fontSize, drops[i] * fontSize);
+
+      if (drops[i] * fontSize > canvas.height && Math.random() > 0.985) {
+        drops[i] = 0;
+      }
+
+      drops[i] += 0.4; // медленное движение
+    }
+  }
+
+  setInterval(draw, 50); // чуть реже обновление
+
+  window.addEventListener("resize", () => {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+  });
+</script>
+
+</body>
+</html>
