@@ -4,10 +4,9 @@
   <meta charset="UTF-8" />
   <title>5SIM Локальная панель управления</title>
   <style>
-    /* Основные стили */
     html, body {
-      margin: 0; 
-      padding: 0; 
+      margin: 0;
+      padding: 0;
       height: 100%;
       background: #000;
       font-family: 'Courier New', monospace;
@@ -15,7 +14,7 @@
       overflow: hidden;
     }
 
-    /* Стили для кастомного скроллбара */
+        /* Стили для кастомного скроллбара */
     ::-webkit-scrollbar {
       width: 10px;
       height: 10px;
@@ -51,11 +50,6 @@
       filter: blur(3px) brightness(0.4);
     }
 
-    .log {
-      scrollbar-color: #00e0c6 #111;
-      scrollbar-width: thin;
-    }
-
     .content {
       position: relative;
       z-index: 1;
@@ -69,6 +63,25 @@
 
     .content::-webkit-scrollbar {
       display: none; /* Скрыть стандартный скроллбар */
+    }
+
+    .back-button {
+      display: inline-block;
+      margin-bottom: 20px;
+      background: rgba(0, 224, 198, 0.1);
+      color: #00e0c6;
+      border: 1px solid #00e0c6;
+      padding: 8px 14px;
+      border-radius: 8px;
+      font-size: 14px;
+      font-family: 'Courier New', monospace;
+      text-decoration: none;
+      transition: all 0.3s ease;
+    }
+
+    .back-button:hover {
+      background: rgba(0, 255, 204, 0.2);
+      box-shadow: 0 0 10px rgba(0, 255, 204, 0.4);
     }
 
     .title {
@@ -206,8 +219,7 @@
 
     #apiKeyModal {
       position: fixed;
-      top: 50%; 
-      left: 50%;
+      top: 50%; left: 50%;
       transform: translate(-50%, -50%);
       background: rgba(10,10,10,0.95);
       padding: 20px;
@@ -223,10 +235,10 @@
 <canvas id="matrixCanvas"></canvas>
 
 <div class="content">
+  <a href="main_style.html" class="back-button">← Назад на главную</a>
+
   <div class="title">
-    ╔════════════════════════════════╗<br>
-    ║Локальная панель управления 5sim║<br>
-    ╚════════════════════════════════╝
+    ЛОКАЛЬНАЯ ПАНЕЛЬ УПРАВЛЕНИЯ 5SIM
   </div>
 
   <div class="user-info" id="userInfo">
