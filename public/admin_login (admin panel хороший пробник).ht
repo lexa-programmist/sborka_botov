@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <title>Админ Контроль</title>
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+      background: #000;
+      color: #00e0c6;
+      font-family: 'Courier New', monospace;
+      overflow: hidden;
+    }
+
+    canvas {
+      position: fixed;
+      top: 0;
+      left: 0;
+      z-index: 0;
+      filter: blur(3px) brightness(0.4);
+    }
+
+    .content {
+      position: relative;
+      z-index: 1;
+      max-width: 800px;
+      margin: 60px auto;
+      padding: 30px;
+      background: rgba(20, 20, 20, 0.9);
+      border: 1px solid #3a3a3a;
+      border-radius: 14px;
+      box-shadow: 0 0 25px rgba(0, 255, 204, 0.12);
+    }
+
+    .title {
+      text-align: center;
+      font-size: 24px;
+      margin-bottom: 30px;
+      color: #00ffc8;
+      text-shadow: 0 0 5px #00e0c6;
+    }
+
+    .panel {
+      background: rgba(30, 30, 30, 0.7);
+      border: 1px solid #444;
+      border-radius: 10px;
+      padding: 20px;
+      margin-bottom: 20px;
+    }
+
+    .panel-title {
+      font-size: 16px;
+      margin-bottom: 15px;
+      color: #00ffc8;
+      border-bottom: 1px solid #444;
+      padding-bottom: 8px;
+    }
+
+    .btn {
+      background: #00e0c6;
+      color: #000;
+      border: none;
+      padding: 10px 15px;
+      border-radius: 6px;
+      font-weight: bold;
+      font-size: 14px;
+      cursor: pointer;
+      transition: all 0.3s;
+      font-family: 'Courier New', monospace;
+      margin-right: 10px;
+    }
+
+    .btn:hover {
+      background: #00ffc8;
+      box-shadow: 0 0 10px rgba(0, 255, 204, 0.5);
+    }
+
+    .btn-danger {
+      background: #ff5555;
+      color: #000;
+    }
+
+    .btn-danger:hover {
+      background: #ff7777;
+      box-shadow: 0 0 10px rgba(255, 85, 85, 0.5);
+    }
+
+    .admin-list {
+      list-style: none;
+      padding: 0;
+      margin-top: 20px;
+    }
+
+    .admin-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 10px;
+      border-bottom: 1px solid #333;
+    }
+
+    .form-group {
+      margin-bottom: 15px;
+    }
+
+    .form-group label {
+      display: block;
+      margin-bottom: 5px;
+      color: #00e0c6;
+    }
+
+    .form-group input {
+      width: 100%;
+      padding: 8px;
+      background: #111;
+      border: 1px solid #444;
+      color: #0ff;
+      border-radius: 6px;
+      font-family: 'Courier New', monospace;
+    }
+
+    .alert {
+      padding: 12px;
+      border-radius: 8px;
+      margin-bottom: 20px;
+      display: none;
+    }
+
+    .alert-success {
+      background: rgba(0, 255, 0, 0.1);
+      border-left: 3px solid #00ff00;
+      color: #00ff00;
+    }
+
+    .alert-error {
+      background: rgba(255, 0, 0, 0.1);
+      border-left: 3px solid #ff5555;
+      color: #ff5555;
+    }
+
+    @keyframes pulse {
+      0% { opacity: 0.5; }
+      50% { opacity: 1; }
+      100% { opacity: 0.5; }
+    }
+
+    .pulse {
+      animation: pulse 2s infinite;
+    }
+  </style>
+</head>
+<body>
+
+<canvas id="matrixCanvas"></canvas>
+
+<div class="content">
+  <div class="title">🔐 Контроль доступа Telegram</div>
+
+  <div id="alertBox" class="alert" style="display: none;"></div>
+
+  <div class="panel">
+    <div class="panel-title">Добавить администратора</div>
+    <div class="form-group">
+      <label>Telegram ID пользователя:</label>
+      <input type="text" id="tgIdInput" placeholder="Введите Telegram ID">
+    </div>
+    <div class="form-group">
+      <label>Имя администратора:</label>
+      <input type="text" id="adminNameInput" placeholder="Введите имя">
+    </div>
+    <button class="btn" id="addAdminBtn">Добавить</button>
+  </div>
+
+  <div class="panel">
+    <div class="panel-title">Текущие администраторы</div>
+    <input type="text" id="adminSearch" placeholder="Поиск по ID или имени..." style="width: 100%; margin-bottom: 15px;">
+    <ul class="admin-list" id="adminList">
+      <!-- Список будет заполняться динамически -->
+    </ul>
+  </div>
+
+  <div class="panel">
+    <div class="panel-title">Системные действия</div>
+    <button class="btn" id="refreshBtn">Обновить список</button>
+    <button class="btn btn-danger" id="logoutBtn">Выйти из админки</button>
+  </div>
+</div>
+
+<script>
+  // Matrix background animation
+  const canvas = document.getElementById("matrixCanvas");
+  const ctx = canvas.getContext("2d");
+
+  canvas.height = window.innerHeight;
+  canvas.width = window.innerWidth;
+
+  const letters = "アイウエオカキクケコサシスセソナニヌネノ0123456789";
+  const fontSize = 16;
+  const columns = canvas.width / fontSize;
+  const drops = Array(Math.floor(columns)).fill(1);
+
+  function draw() {
+    ctx.fillStyle = "rgba(0, 0, 0, 0.07)";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    ctx.fillStyle = "#66ffe6";
+    ctx.font = fontSize + "px monospace";
+
+    for (let i = 0; i < drops.length; i++) {
+      const text = letters.charAt(Math.floor(Math.random() * letters.length));
+      ctx.fillText(text, i * fontSize, drops[i] * fontSize);
+
+      if (drops[i] * fontSize > canvas.height && Math.random() > 0.985) {
+        drops[i] = 0;
+      }
+
+      drops[i] += 0.4;
+    }
+  }
+
+  setInterval(draw, 50);
+
+  window.addEventListener("resize", () => {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+  });
+
+  // Admin panel functionality
+  const API_URL = 'http://localhost:3000'; // Замените на ваш API endpoint
+
+  document.getElementById('logoutBtn').addEventListener('click', function() {
+    localStorage.removeItem('adminAuthenticated');
+    window.location.href = 'admin_login.html';
+  });
+
+  document.getElementById('addAdminBtn').addEventListener('click', addAdmin);
+  document.getElementById('refreshBtn').addEventListener('click', loadAdmins);
+  document.getElementById('adminSearch').addEventListener('input', searchAdmins);
+
+  // Загружаем список админов при загрузке страницы
+  document.addEventListener('DOMContentLoaded', loadAdmins);
+
+  function showAlert(message, type) {
+    const alertBox = document.getElementById('alertBox');
+    alertBox.textContent = message;
+    alertBox.className = `alert alert-${type} pulse`;
+    alertBox.style.display = 'block';
+    
+    setTimeout(() => {
+      alertBox.style.display = 'none';
+    }, 3000);
+  }
+
+  async function loadAdmins() {
+    try {
+      // В реальности здесь будет fetch запрос к вашему API
+      // const response = await fetch(`${API_URL}/admins`);
+      // const admins = await response.json();
+      
+      // Для демонстрации используем мок данные
+      const admins = [
+        { id: "123456789", name: "Главный Админ" },
+        { id: "987654321", name: "Тестовый Юзер" }
+      ];
+      
+      renderAdminList(admins);
+    } catch (error) {
+      showAlert('Ошибка загрузки списка админов', 'error');
+      console.error(error);
+    }
+  }
+
+  function renderAdminList(admins) {
+    const adminList = document.getElementById('adminList');
+    adminList.innerHTML = '';
+    
+    admins.forEach(admin => {
+      const li = document.createElement('li');
+      li.className = 'admin-item';
+      li.innerHTML = `
+        <span>${admin.name} (ID: ${admin.id})</span>
+        <div>
+          <button class="btn btn-danger" onclick="removeAdmin('${admin.id}')">Удалить</button>
+        </div>
+      `;
+      adminList.appendChild(li);
+    });
+  }
+
+  async function addAdmin() {
+    const tgId = document.getElementById('tgIdInput').value.trim();
+    const name = document.getElementById('adminNameInput').value.trim();
+    
+    if (!tgId || !name) {
+      showAlert('Заполните все поля', 'error');
+      return;
+    }
+
+    try {
+      // В реальности здесь будет fetch запрос к вашему API
+      // const response = await fetch(`${API_URL}/admins`, {
+      //   method: 'POST',
+      //   headers: { 'Content-Type': 'application/json' },
+      //   body: JSON.stringify({ id: tgId, name })
+      // });
+      
+      // Для демонстрации просто добавляем в массив
+      showAlert(`Админ ${name} (${tgId}) добавлен`, 'success');
+      document.getElementById('tgIdInput').value = '';
+      document.getElementById('adminNameInput').value = '';
+      
+      // Обновляем список
+      loadAdmins();
+    } catch (error) {
+      showAlert('Ошибка добавления админа', 'error');
+      console.error(error);
+    }
+  }
+
+  async function removeAdmin(tgId) {
+    if (!confirm('Вы уверены, что хотите удалить этого администратора?')) return;
+    
+    try {
+      // В реальности здесь будет fetch запрос к вашему API
+      // const response = await fetch(`${API_URL}/admins/${tgId}`, { method: 'DELETE' });
+      
+      showAlert('Администратор удален', 'success');
+      loadAdmins();
+    } catch (error) {
+      showAlert('Ошибка удаления админа', 'error');
+      console.error(error);
+    }
+  }
+
+  function searchAdmins() {
+    const searchTerm = document.getElementById('adminSearch').value.toLowerCase();
+    const items = document.querySelectorAll('.admin-item');
+    
+    items.forEach(item => {
+      const text = item.textContent.toLowerCase();
+      item.style.display = text.includes(searchTerm) ? 'flex' : 'none';
+    });
+  }
+
+  // Экспортируем функции для глобального доступа
+  window.removeAdmin = removeAdmin;
+</script>
+
+</body>
+</html>

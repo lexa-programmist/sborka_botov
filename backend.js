@@ -12,6 +12,8 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
+const ADMINS_FILE = path.join(__dirname, 'admins.json');
+
 const keysFile = path.join(__dirname, 'keys.json');
 let keys = {};
 
@@ -201,6 +203,45 @@ app.post('/cancel', async (req, res) => {
     });
   }
 });
+
+app.get('/admins', (req, res) => {
+  try {
+    const admins = JSON.parse(fs.readFileSync(ADMINS_FILE, 'utf8'));
+    res.json(admins);
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to read admins' });
+  }
+});
+
+// Добавление админа
+app.post('/admins', (req, res) => {
+  const { id, name } = req.body;
+  
+  try {
+    const admins = JSON.parse(fs.readFileSync(ADMINS_FILE, 'utf8'));
+    admins.push({ id, name });
+    fs.writeFileSync(ADMINS_FILE, JSON.stringify(admins, null, 2));
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to add admin' });
+  }
+});
+
+// Удаление админа
+app.delete('/admins/:id', (req, res) => {
+  const idToRemove = req.params.id;
+  
+  try {
+    let admins = JSON.parse(fs.readFileSync(ADMINS_FILE, 'utf8'));
+    admins = admins.filter(admin => admin.id !== idToRemove);
+    fs.writeFileSync(ADMINS_FILE, JSON.stringify(admins, null, 2));
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to remove admin' });
+  }
+});
+
+app.listen(3000, () => console.log('Server running on port 3000'));
 
 app.listen(PORT, () => {
   console.log(`Backend запущен http://localhost:${PORT}`);
