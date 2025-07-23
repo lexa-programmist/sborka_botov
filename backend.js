@@ -147,35 +147,57 @@ app.post('/buy', async (req, res) => {
   }
 });
 
+app.post('/order/status', async (req, res) => {
+  try {
+    const { order_id, user_id } = req.body;
+    const apiKey = keys[user_id || 'local'];
+    
+    if (!apiKey) return res.status(400).json({ error: 'API ключ не найден' });
+
+    const response = await axios.get(`https://5sim.net/v1/user/check/${order_id}`, {
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Accept': 'application/json'
+      }
+    });
+
+    res.json(response.data);
+  } catch (e) {
+    console.error('Order status error:', e);
+    res.status(500).json({ 
+      error: e.response?.data?.message || e.message 
+    });
+  }
+});
+
 app.post('/cancel', async (req, res) => {
   try {
     const { order_id, user_id } = req.body;
     const apiKey = keys[user_id || 'local'];
     
-    if (!apiKey) throw new Error('API ключ не найден');
-    if (!order_id) throw new Error('order_id обязателен');
+    if (!apiKey) return res.status(400).json({ 
+      success: false,
+      error: 'API ключ не найден' 
+    });
 
     const response = await axios.get(`https://5sim.net/v1/user/cancel/${order_id}`, {
       headers: {
         'Authorization': `Bearer ${apiKey}`,
-        'Accept': 'application/json',
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-      },
-      timeout: 10000,
-      responseType: 'text'
+        'Accept': 'application/json'
+      }
     });
 
-    try {
-      const data = JSON.parse(response.data);
-      return res.json({ success: true, data });
-    } catch {
-      throw new Error(`Невалидный JSON: ${response.data.substring(0, 100)}`);
-    }
+    // Всегда возвращаем success: true при коде 200
+    return res.json({ 
+      success: true,
+      data: response.data 
+    });
+
   } catch (e) {
-    console.error('Cancel Error:', e.message);
+    console.error('Cancel error:', e);
     return res.status(500).json({ 
       success: false,
-      error: e.response?.data?.message || e.message
+      error: e.response?.data?.message || e.message 
     });
   }
 });

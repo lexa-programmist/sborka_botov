@@ -124,11 +124,12 @@ function updateUI() {
 
 // Сохраняем текущие заказы
 function saveOrdersToStorage() {
-  localStorage.setItem('5sim_active_orders', JSON.stringify({
+  const ordersToSave = {
     currentOrderId: state.currentOrderId,
     orders: state.currentOrders,
     lastUpdated: new Date().toISOString()
-  }));
+  };
+  localStorage.setItem('5sim_active_orders', JSON.stringify(ordersToSave));
 }
 
 // Загружаем заказы
@@ -136,15 +137,22 @@ function loadOrdersFromStorage() {
   const saved = localStorage.getItem('5sim_active_orders');
   if (saved) {
     try {
-      const { currentOrderId, orders, lastUpdated } = JSON.parse(saved);
-      state.currentOrderId = currentOrderId;
-      state.currentOrders = orders || [];
+      const data = JSON.parse(saved);
       
-      if (currentOrderId || orders?.length) {
-        addLog(`Загружено ${orders?.length || 1} активных заказов`, 'init');
+      // Восстанавливаем ID текущего заказа
+      state.currentOrderId = data.currentOrderId || null;
+      
+      // Восстанавливаем список заказов с проверкой
+      state.currentOrders = Array.isArray(data.orders) 
+        ? data.orders.filter(order => order && order.id) 
+        : [];
+      
+      if (state.currentOrders.length > 0 || state.currentOrderId) {
+        addLog(`Загружено ${state.currentOrders.length} активных заказов`, 'init');
       }
     } catch (e) {
       console.error('Ошибка загрузки заказов:', e);
+      localStorage.removeItem('5sim_active_orders');
     }
   }
 }
@@ -267,7 +275,8 @@ async function buyNumber() {
       if (result.success) {
         addLog(`✅ Номер куплен: ${result.data.phone} | Стоимость: ${result.data.price} руб.`);
         orders.push(result.data);
-        state.currentOrderId = result.data.id; // Исправлено: используем result.data
+        state.currentOrderId = result.data.id;
+        state.currentOrders = orders; // Исправлено: используем result.data
         updateButtonStates();
         await new Promise(r => setTimeout(r, 500));
       } else {
@@ -312,10 +321,10 @@ async function getCode() {
 
 // Отмена заказа
 async function cancelOrder() {
-  // Собираем все ID заказов (текущий + из списка)
+  // Собираем все ID заказов
   const orderIds = [];
   if (state.currentOrderId) orderIds.push(state.currentOrderId);
-  state.currentOrders.forEach(order => orderIds.push(order.id));
+  orderIds.push(...state.currentOrders.map(o => o.id));
 
   if (orderIds.length === 0) {
     showResult('❌ Нет активных заказов для отмены', true);
@@ -323,36 +332,31 @@ async function cancelOrder() {
   }
 
   try {
-    showResult(`⌛ Отмена ${orderIds.length} заказов...`);
-    updateStatus('Обработка...');
+    showResult(`⌛ Отменяем ${orderIds.length} заказов...`);
+    
+    // Параллельная отмена всех заказов
+    const results = await Promise.allSettled(
+      orderIds.map(id => 
+        apiPost('/cancel', { order_id: id, user_id: userId })
+      )
+    );
 
-    // ЗАМЕНЯЕМ ЭТОТ БЛОК:
-    const results = [];
-    for (const orderId of orderIds) {
-      const result = await apiPost('/cancel', {
-        order_id: orderId, 
-        user_id: userId
-      }).catch(e => ({ success: false, error: e.message }));
-      results.push(result);
-      await new Promise(resolve => setTimeout(resolve, 100)); // 100ms задержка
-    }
-
-    // Анализируем результаты
-    const successCount = results.filter(r => r?.success).length;
-    const errorCount = results.length - successCount;
-
-    if (errorCount > 0) {
-      showResult(`✅ Отменено ${successCount}/${orderIds.length} заказов (${errorCount} ошибок)`, false);
-    } else {
-      showResult(`✅ Все ${orderIds.length} заказов отменены`);
-    }
-
-    // Очищаем состояние
+    // Очищаем состояние независимо от результата
     state.currentOrderId = null;
     state.currentOrders = [];
-    await getBalance();
+    localStorage.removeItem('5sim_active_orders');
+
+    // Анализ результатов
+    const successCount = results.filter(r => r.status === 'fulfilled' && r.value?.success).length;
+    
+    if (successCount > 0) {
+      showResult(`✅ Успешно отменено ${successCount} заказов`);
+      await getBalance();
+    } else {
+      showResult('❌ Не удалось отменить заказы', true);
+    }
   } catch (e) {
-    showResult(`❌ Общая ошибка: ${e.message}`, true);
+    showResult(`❌ Ошибка: ${e.message}`, true);
   } finally {
     updateUI();
   }
@@ -391,29 +395,38 @@ async function getOrderInfo() {
 
     let infoText = `ℹ️ Активных заказов: ${activeOrders.length}\n\n`;
     
-    // Используем данные, которые уже есть в состоянии
+    // Используем данные из состояния и localStorage
     activeOrders.forEach(order => {
       infoText += `Заказ #${order.id}\n`;
       infoText += `Номер: ${order.phone || order.number || 'не указан'}\n`;
-      infoText += `Страна: ${order.country || 'не указана'}\n`;
+      infoText += `Страна: ${order.country || order.country_name || 'не указана'}\n`;
       infoText += `Сервис: ${order.service || 'не указан'}\n`;
       infoText += `Статус: ${order.status || 'активен'}\n`;
       infoText += `Цена: ${order.price || '0'} руб.\n`;
       
+      // Проверяем разные варианты хранения SMS/кода
       if (order.sms) {
         infoText += `SMS: ${order.sms.text || order.sms || 'еще не получено'}\n`;
       } else if (order.code) {
         infoText += `Код: ${order.code}\n`;
+      } else if (order.sms_code) {
+        infoText += `Код: ${order.sms_code}\n`;
       }
       
       infoText += `----------------\n`;
     });
 
-    // Добавляем время обновления
+    // Добавляем время последнего обновления из localStorage
     const savedData = localStorage.getItem('5sim_active_orders');
     if (savedData) {
-      const { lastUpdated } = JSON.parse(savedData);
-      infoText += `\nПоследнее обновление: ${new Date(lastUpdated).toLocaleString()}`;
+      try {
+        const { lastUpdated } = JSON.parse(savedData);
+        if (lastUpdated) {
+          infoText += `\nПоследнее обновление: ${new Date(lastUpdated).toLocaleString()}`;
+        }
+      } catch (e) {
+        console.error('Ошибка чтения времени обновления:', e);
+      }
     }
 
     showResult(infoText);
@@ -484,42 +497,49 @@ el.updateApiKeyBtn.addEventListener('click', async () => {
 // ... (весь предыдущий код остается без изменений до функции verifyActiveOrders)
 
 async function verifyActiveOrders() {
-  if (!state.currentOrders?.length && !state.currentOrderId) return;
+  if (!state.currentOrders.length && !state.currentOrderId) return;
 
-  try {
-    const validOrders = [];
-    const checkOrder = async (orderId) => {
-      try {
-        const res = await apiPost('/order/status', { order_id: orderId });
-        return res.status !== 'CANCELED';
-      } catch {
-        return false;
+  const validOrders = [];
+  
+  // Проверяем основной заказ
+  if (state.currentOrderId) {
+    try {
+      const res = await apiPost('/order/status', { order_id: state.currentOrderId });
+      if (res.status && res.status !== 'CANCELED') {
+        validOrders.push({ 
+          id: state.currentOrderId,
+          phone: res.phone,
+          country: res.country,
+          service: res.service,
+          status: res.status,
+          price: res.price
+        });
       }
-    };
-
-    // Проверяем текущий заказ
-    if (state.currentOrderId) {
-      const isValid = await checkOrder(state.currentOrderId);
-      if (!isValid) state.currentOrderId = null;
+    } catch (e) {
+      console.error('Ошибка проверки заказа:', e);
     }
-
-    // Проверяем список заказов
-    for (const order of state.currentOrders) {
-      if (order?.id && await checkOrder(order.id)) {
-        validOrders.push(order);
-      }
-    }
-
-    state.currentOrders = validOrders;
-    
-    if (validOrders.length === 0 && !state.currentOrderId) {
-      localStorage.removeItem('5sim_active_orders');
-    } else {
-      saveOrdersToStorage();
-    }
-  } catch (e) {
-    console.error('Ошибка проверки заказов:', e);
   }
+
+  // Проверяем список заказов
+  for (const order of state.currentOrders) {
+    try {
+      const res = await apiPost('/order/status', { order_id: order.id });
+      if (res.status && res.status !== 'CANCELED') {
+        validOrders.push({
+          ...order,
+          status: res.status // Обновляем статус
+        });
+      }
+    } catch (e) {
+      console.error('Ошибка проверки заказа:', e);
+    }
+  }
+
+  // Обновляем состояние
+  state.currentOrders = validOrders;
+  state.currentOrderId = validOrders.length ? validOrders[0].id : null;
+  
+  saveOrdersToStorage();
 }
 
 // Инициализация страницы и UI
@@ -528,6 +548,7 @@ async function init() {
   if (savedKey) {
     try {
       state.apiKey = savedKey;
+      await verifyActiveOrders();
       el.apiKeyInput.value = savedKey;
       
       await apiPost('/init', { user_id: userId, api_key: savedKey });
