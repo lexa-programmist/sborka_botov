@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <title>Админ Вход</title>
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+      background: #000;
+      color: #00e0c6;
+      font-family: 'Courier New', monospace;
+      overflow: hidden;
+    }
+
+    canvas {
+      position: fixed;
+      top: 0;
+      left: 0;
+      z-index: 0;
+      filter: blur(3px) brightness(0.4);
+    }
+
+    .content {
+      position: relative;
+      z-index: 1;
+      max-width: 480px;
+      margin: 120px auto;
+      padding: 40px;
+      background: rgba(20, 20, 20, 0.9);
+      border: 1px solid #3a3a3a;
+      border-radius: 14px;
+      box-shadow: 0 0 25px rgba(0, 255, 204, 0.12);
+    }
+
+    .title {
+      text-align: center;
+      font-size: 22px;
+      margin-bottom: 25px;
+      color: #00ffc8;
+      text-shadow: 0 0 5px #00e0c6;
+    }
+
+    .input-group {
+      margin-bottom: 20px;
+    }
+
+    label {
+      display: block;
+      margin-bottom: 6px;
+      font-size: 14px;
+      color: #00e0c6;
+    }
+
+    input {
+      width: 100%;
+      padding: 10px;
+      background: #111;
+      border: 1px solid #444;
+      color: #0ff;
+      border-radius: 6px;
+      font-family: 'Courier New', monospace;
+      font-size: 15px;
+    }
+
+    button {
+      background: #00e0c6;
+      color: #000;
+      border: none;
+      padding: 12px 18px;
+      border-radius: 8px;
+      font-weight: bold;
+      font-size: 15px;
+      cursor: pointer;
+      transition: all 0.3s;
+      width: 100%;
+      font-family: 'Courier New', monospace;
+    }
+
+    button:hover {
+      background: #00ffc8;
+      box-shadow: 0 0 10px rgba(0, 255, 204, 0.5);
+    }
+
+    .error {
+      margin-top: 18px;
+      padding: 10px;
+      border-radius: 8px;
+      background: rgba(255, 0, 0, 0.1);
+      border-left: 3px solid #ff5555;
+      font-size: 14px;
+      color: #ff5555;
+      display: none;
+    }
+  </style>
+</head>
+<body>
+
+<canvas id="matrixCanvas"></canvas>
+
+<div class="content">
+  <div class="title">🔐 Административный вход</div>
+
+  <div class="input-group">
+    <label>Логин:</label>
+    <input type="text" id="loginInput">
+  </div>
+
+  <div class="input-group">
+    <label>Пароль:</label>
+    <input type="password" id="passwordInput">
+  </div>
+
+  <button id="loginBtn">Войти</button>
+  <div class="error" id="errorMsg">Неверные учетные данные!</div>
+</div>
+
+<script>
+  const canvas = document.getElementById("matrixCanvas");
+  const ctx = canvas.getContext("2d");
+
+  canvas.height = window.innerHeight;
+  canvas.width = window.innerWidth;
+
+  const letters = "アイウエオカキクケコサシスセソナニヌネノ0123456789";
+  const fontSize = 16;
+  const columns = canvas.width / fontSize;
+  const drops = Array(Math.floor(columns)).fill(1);
+
+  function draw() {
+    ctx.fillStyle = "rgba(0, 0, 0, 0.07)";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    ctx.fillStyle = "#66ffe6";
+    ctx.font = fontSize + "px monospace";
+
+    for (let i = 0; i < drops.length; i++) {
+      const text = letters.charAt(Math.floor(Math.random() * letters.length));
+      ctx.fillText(text, i * fontSize, drops[i] * fontSize);
+
+      if (drops[i] * fontSize > canvas.height && Math.random() > 0.985) {
+        drops[i] = 0;
+      }
+
+      drops[i] += 0.4;
+    }
+  }
+
+  setInterval(draw, 50);
+
+  window.addEventListener("resize", () => {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+  });
+
+  document.getElementById('loginBtn').addEventListener('click', function() {
+    const login = document.getElementById('loginInput').value;
+    const password = document.getElementById('passwordInput').value;
+
+    if (login === 'admin' && password === 'ovraik') {
+      localStorage.setItem('adminAuthenticated', 'true');
+      window.location.href = 'main_style.html';
+    } else {
+      document.getElementById('errorMsg').style.display = 'block';
+    }
+  });
+</script>
+
+</body>
+</html>

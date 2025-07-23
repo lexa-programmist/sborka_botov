@@ -3,6 +3,11 @@
 <head>
   <meta charset="UTF-8">
   <title>Мои боты</title>
+  <script>
+    if(localStorage.getItem('adminAuthenticated') !== 'true') {
+      window.location.href = 'admin_login.html';
+    }
+  </script>
   <style>
     html, body {
       margin: 0;
